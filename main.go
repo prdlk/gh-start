@@ -4,7 +4,6 @@ package main
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,6 +11,13 @@ import (
 
 	"charm.land/huh/v2"
 )
+
+const usage = `Usage: gh start [task description...]
+
+Configure a coding agent session, create a workmux worktree, and start the agent.
+Defaults come from your environment: the agent is workmux's configured agent,
+autocomplete uses omp when installed, and the launch mode is tmux inside tmux.
+`
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -24,21 +30,9 @@ func main() {
 }
 
 func run(argv []string) error {
-	fs := flag.NewFlagSet("gh start", flag.ContinueOnError)
-	agent := fs.String("agent", envOr("GH_START_AGENT", "omp"), "coding agent preselected in the form")
-	completeModel := fs.String("complete-model", envOr("GH_START_COMPLETE_MODEL", "pi/smol"),
-		"omp model used for autocomplete and branch names (empty: omp default)")
-	noComplete := fs.Bool("no-complete", false, "disable AI autocomplete")
-	fs.Usage = func() {
-		fmt.Fprintf(fs.Output(), "Usage: gh start [flags] [task description...]\n\n"+
-			"Configure a coding agent session, create a workmux worktree, and start the agent.\n\nFlags:\n")
-		fs.PrintDefaults()
-	}
-	if err := fs.Parse(argv); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return nil
-		}
-		return err
+	if len(argv) == 1 && (argv[0] == "-h" || argv[0] == "--help" || argv[0] == "help") {
+		fmt.Print(usage)
+		return nil
 	}
 
 	if _, err := exec.LookPath("workmux"); err != nil {
@@ -52,30 +46,31 @@ func run(argv []string) error {
 	if err != nil {
 		return err
 	}
-	agents := detectAgents(*agent)
+	wmAgent := workmuxAgent(repo.Root)
+	agents := detectAgents(firstWord(wmAgent))
 	if len(agents) == 0 {
 		return fmt.Errorf("no coding agent found in PATH (looked for %s)", strings.Join(knownAgents, ", "))
 	}
 
 	var completer *Completer
-	if !*noComplete {
-		if bin, err := exec.LookPath("omp"); err == nil {
-			completer = &Completer{Bin: bin, Model: *completeModel, Dir: repo.Root, Context: repo.PromptContext()}
-		}
+	if bin, err := exec.LookPath("omp"); err == nil {
+		completer = &Completer{Bin: bin, Model: completeModel, Dir: repo.Root, Context: repo.PromptContext()}
 	}
 
 	_, tmuxErr := exec.LookPath("tmux")
 	env := &Env{
-		Repo:      repo,
-		Agents:    agents,
-		Models:    <-modelsCh,
-		Completer: completer,
-		HasTmux:   tmuxErr == nil,
+		Repo:         repo,
+		Agents:       agents,
+		WorkmuxAgent: wmAgent,
+		Models:       <-modelsCh,
+		Completer:    completer,
+		HasTmux:      tmuxErr == nil,
 	}
 	cfg := &Config{
-		Task:   strings.Join(fs.Args(), " "),
-		Agent:  agents[0],
-		Launch: LaunchHere,
+		Task:      strings.Join(argv, " "),
+		Agent:     agents[0],
+		Launch:    LaunchHere,
+		Confirmed: true, // enter through the form starts the session
 	}
 	if env.HasTmux && os.Getenv("TMUX") != "" {
 		cfg.Launch = LaunchTmux
@@ -89,11 +84,4 @@ func run(argv []string) error {
 		return nil
 	}
 	return launch(cfg, env)
-}
-
-func envOr(key, fallback string) string {
-	if v, ok := os.LookupEnv(key); ok {
-		return v
-	}
-	return fallback
 }

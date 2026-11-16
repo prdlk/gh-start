@@ -131,3 +131,35 @@ func detectAgents(preferred string) []string {
 	}
 	return agents
 }
+
+// workmuxAgent returns the `agent:` workmux will use in root: the project
+// .workmux.yaml overrides the global config. Empty when neither sets it.
+func workmuxAgent(root string) string {
+	paths := []string{filepath.Join(root, ".workmux.yaml"), filepath.Join(root, ".workmux.yml")}
+	if global, err := exec.Command("workmux", "config", "path").Output(); err == nil {
+		paths = append(paths, strings.TrimSpace(string(global)))
+	}
+	for _, p := range paths {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			v, ok := strings.CutPrefix(line, "agent:") // top-level key only
+			if !ok {
+				continue
+			}
+			if i := strings.Index(v, " #"); i >= 0 {
+				v = v[:i]
+			}
+			v = strings.TrimSpace(v)
+			if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
+				v = v[1 : len(v)-1]
+			}
+			if v != "" {
+				return v
+			}
+		}
+	}
+	return ""
+}

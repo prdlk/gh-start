@@ -11,6 +11,9 @@ import (
 	"unicode/utf8"
 )
 
+// completeModel is omp's fast-model role: low latency for keystroke-driven completions.
+const completeModel = "pi/smol"
+
 // Completer asks the local omp agent, in print mode, for short completions.
 type Completer struct {
 	Bin     string

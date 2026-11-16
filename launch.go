@@ -45,14 +45,19 @@ func promptArgs(agent, task string) []string {
 	}
 }
 
-func tmuxArgs(cfg *Config, promptFile string) []string {
+// tmuxArgs builds `workmux add`; --agent is omitted when the agent command is
+// exactly workmux's configured agent.
+func tmuxArgs(cfg *Config, workmuxAgent, promptFile string) []string {
 	args := []string{"add"}
 	if cfg.Branch != "" {
 		args = append(args, cfg.Branch)
 	} else {
 		args = append(args, "--auto-name")
 	}
-	args = append(args, "--agent", shellJoin(agentCommand(cfg)), "--prompt-file", promptFile)
+	if agent := shellJoin(agentCommand(cfg)); agent != workmuxAgent {
+		args = append(args, "--agent", agent)
+	}
+	args = append(args, "--prompt-file", promptFile)
 	if cfg.Base != "" {
 		args = append(args, "--base", cfg.Base)
 	}
@@ -98,7 +103,7 @@ func launchTmux(cfg *Config, env *Env) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	cmd := exec.Command("workmux", tmuxArgs(cfg, f.Name())...)
+	cmd := exec.Command("workmux", tmuxArgs(cfg, env.WorkmuxAgent, f.Name())...)
 	cmd.Dir = env.Repo.Root
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {

@@ -41,18 +41,19 @@ type Config struct {
 
 // Env is what gh-start discovered about the machine and repository.
 type Env struct {
-	Repo      *Repo
-	Agents    []string
-	Models    []Model
-	Completer *Completer
-	HasTmux   bool
+	Repo         *Repo
+	Agents       []string
+	WorkmuxAgent string // `agent:` from workmux config; empty when unset
+	Models       []Model
+	Completer    *Completer
+	HasTmux      bool
 }
 
 func buildForm(cfg *Config, env *Env) *huh.Form {
 	task := NewAIText(&cfg.Task, env.Completer)
 	desc := "alt+enter / ctrl+j new line · ctrl+e $EDITOR"
 	if env.Completer == nil {
-		desc += " · autocomplete off (omp not found or --no-complete)"
+		desc += " · autocomplete off (omp not found)"
 	}
 	task.Text.
 		Title("What should the agent change?").
@@ -208,7 +209,7 @@ func summary(cfg *Config, env *Env) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "repo    %s\nbranch  %s\nagent   %s\n", env.Repo.Root, branch, shellJoin(agentCommand(cfg)))
 	if cfg.Launch == LaunchTmux {
-		fmt.Fprintf(&b, "\n$ %s", shellJoin(append([]string{"workmux"}, tmuxArgs(cfg, "<task.md>")...)))
+		fmt.Fprintf(&b, "\n$ %s", shellJoin(append([]string{"workmux"}, tmuxArgs(cfg, env.WorkmuxAgent, "<task.md>")...)))
 	} else {
 		fmt.Fprintf(&b, "\n$ %s\n$ cd <worktree> && %s <task>",
 			shellJoin(append([]string{"workmux"}, headlessArgs(cfg, cmp.Or(cfg.Branch, "<branch>"))...)),
